@@ -3,7 +3,7 @@ packages <- c("plyr","tidyverse","plotly",
               "gridExtra","ggseqlogo","DT",
               "RDocumentation","runjags","pracma",
               "shiny","data.table","shinydashboard",
-              "shinyjs", "shinyWidgets")
+              "shinyjs", "shinyWidgets", "rsconnect")
 for (i in seq_along(packages))
 {
   if(!requireNamespace(packages[i]))
@@ -32,15 +32,26 @@ library(data.table)
 library(shinydashboard)
 library(shinyjs)
 library(shinyWidgets)
+library(rsconnect)
 
-db <- data.table(c("a","b","c","d"))
-db <- data.table(c("form_data","date", "scientist", "protein", "cell", "description","drug"))
 
-write.csv(db,"./Proteomics Database/db.csv")
+db <- data.table("sub_date","dataFile","date", "scientist", "protein", "cell", "description","drug","eln")
+foo <- data.table("melon", "melon","melon","melon","melon","melon","jp","foo", "melon")
+f <- bind_rows(db,foo)
 
-db_csv <- read.csv("./Proteomics Database/db.csv")
+write.csv(f,"./Proteomics Database/db.csv")
+
+db_csv <- read.table("./Proteomics Database/db.csv",
+                     header=TRUE,
+                     sep=",",
+                     colClasses="character"
+                     )
+
 db_csv <- db_csv[-1] %>% setDT()
-foo <- c("melon","melon","melon","melon","melon","jp")
+
+
+
+
 
 db_csv[, f := foo]
 

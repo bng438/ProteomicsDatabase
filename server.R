@@ -9,37 +9,44 @@ source("volcano_helper.R")
 # Defines server logic  ----
 server <- function(input, output, session) 
 {
-  # Determines time in readable format
-  humanTime <- function() 
-  {
-    return(format(Sys.time(), "%Y%m%d-%H%M%OS"))
-  }
+  # # Determines time in readable format
+  # humanTime <- function() 
+  # {
+  #   return(format(Sys.time(), "%Y%m%d-%H%M%OS"))
+  # }
   
   
   # Aggregates all form inputs and adds them to the database  ----
   submitForm <- function()
   {
-    db <- read.csv("db.csv")
+    db <- read.table("db.csv",
+                     header=TRUE,
+                     sep=",",
+                     colClasses="character"
+    )
     db <- db[-1] %>% setDT()
     
     # Aggregates all inputs  ----
-    entry <- c()
+    # First column records submission time and date, thus i+1
+    entry <- as.data.table(matrix("0",nrow=1,ncol=(length(fields)+1)))
+    
+    entry[,1] <- as.character(Sys.time())
     for (i in 1:length(fields))
     {
-      if (fields[i] == "form_data")
-        entry <- c(entry,input$form_data$name)
+      if (fields[i] == "dataFile")
+        entry[,i+1] <- input$dataFile$name
       
       else if (fields[i] == "date")
-        entry <- c(entry,as.character(input$date))
+        entry[,i+1] <- as.character(input$date)
       
       else
-        entry <- c(entry,input[[fields[i]]])
+        entry[,i+1] <- input[[fields[i]]]
     }
     
     # Creates new column, containing all new entries, with current time as name  ----
-    db[,humanTime() := entry]
+    db <- bind_rows(db,entry)
     
-    # saves updated database  ----
+    # Saves updated database  ----
     write.csv(db,"db.csv")
     
     reset("form")
@@ -71,7 +78,32 @@ server <- function(input, output, session)
   })
   
   
-
+  dbRender <- reactive({
+    db <- read.csv("db.csv")
+    db <- db[-1] %>% setDT()
+    db
+  })
+  
+  # Renders database
+  output$db <- renderDT({
+    datatable(
+      dbRender(),
+      extensions="Responsive"
+    )
+  })
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   
   
@@ -262,7 +294,7 @@ server <- function(input, output, session)
   })
   
   
-  # Produces prompt to select which comparison group to view  ----
+  # Produces prompt to select which comparison group to view includes "all" option  ----
   comparison_group_prompt <- reactive({
     names <- cbind(getComparisonNames(),"all")
     selectInput("compare_group","Comparison Group:",
@@ -336,6 +368,7 @@ server <- function(input, output, session)
     sig_protein
   })
   
+  
   # Determines proteins beyond pval and fold-change thresholds  ----
   getSigProt <- function(dat)
   {
@@ -353,6 +386,7 @@ server <- function(input, output, session)
     return(dat[keep,])
   }
   
+  
   # Misc.: Determines percent median of all samples  ----
   percent_median <- reactive({
     dat <- data_selected()
@@ -366,44 +400,123 @@ server <- function(input, output, session)
   
   # Renders all outputs  ----
   
+  # Delays rendering until datatset and TMT map has be uploaded  ----
+  coverUp <- function(x)
+  {
+    if (is.null(input$volc_data) || is.null(input$tmt))
+      return(NULL)
+    else
+      return(x)
+    
+  }
+  
+  
   # Renders dataset with only protein abundances
-  output$data_tidy <- renderDataTable({
-    data_selected()
+  output$data_tidy <- renderDT({
+    coverUp(
+      datatable(
+        data_selected(),
+        rownames=FALSE,
+        options=list(columnDefs = list(list(className="dt-ceter")))
+      )
+    )
   })
   
   # Renders dataset of protein abundances after being normalized about median
   output$data_normalized <- renderDataTable({
-    roundValues(data_normalized(),3)
+    coverUp(
+      roundValues(data_normalized(),3)
+    )
   })
   
   # Renders prompt to select comparison group
   output$comparison_group <- renderUI({
-    comparison_group_prompt()
+    coverUp(
+      comparison_group_prompt()
+    )
   })
   
   # Renders table of fold-changes & pvals for selected comparison group
   output$comparison_group_data <- renderDataTable({
-    comparison_group_data()
+    coverUp(
+      comparison_group_data()
+    )
   })
+  
+  # Renders button to download fc & pval data  ----
+  output$fc_pval_button <- renderUI({
+    coverUp(
+      downloadButton("fc_pval_dwnld", label=tags$b("Download"))
+    )
+  })
+  
+  # Downloads fc & pval data once download button has been pressed  ----
+  output$fc_pval_dwnld <- downloadHandler(
+    filename = function() {
+      paste("data-",Sys.Date(),".csv",sep="")
+    },
+    contentType="csv",
+    content = function(file)
+    {
+      write.csv(comparison_group_data(),file)
+    }
+  )
   
   # Renders volcano plots for all combinations of groups
   output$volcano <- renderPlotly({
-    volcano()
+    coverUp(
+      volcano()
+    )
   })
   
   # Renders prompt to select comparison group for significant protein
   output$sig_comparison_group <- renderUI({
-    sig_comparison_prompt()
+    coverUp(
+      sig_comparison_prompt()
+    )
   })
   
   # Renders table of significant proteins
   output$sig_protein_data <- renderDataTable({
-    sig_protein_data()
+    coverUp(
+      sig_protein_data()
+    )
   })
+  
+  # Renders button to download significant protein data  ----
+  output$sig_prot_button <- renderUI({
+    coverUp(
+      downloadButton("sig_prot_dwnld", label=tags$b("Download"))
+    )
+  })
+  
+  # Downloads significant protein data once download button has been pressed  ----
+  output$sig_prot_dwnld <- downloadHandler(
+    filename = function() {
+      paste("data-",Sys.Date(),".csv",sep="")
+    },
+    contentType="csv",
+    content = function(file)
+    {
+      write.csv(sig_protein_data(),file)
+    }
+  )
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
   # Renders table of pecent medians of all samples
   output$percent_median <- renderDataTable({
-    percent_median()
+    coverUp(
+      percent_median()
+    )
   })
   
 }

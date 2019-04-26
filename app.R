@@ -4,25 +4,6 @@
 # 
 
 
-# Installs Packages  ----
-packages <- c("plyr","tidyverse","plotly", 
-              "gridExtra","ggseqlogo","DT",
-              "RDocumentation","runjags","pracma",
-              "shiny","data.table","shinydashboard",
-              "shinyjs", "shinyWidgets")
-for (i in seq_along(packages))
-{
-  if(!requireNamespace(packages[i]))
-  {
-    install.packages(packages[i])
-  }
-}
-
-
-# Clears Global Workspace  ----
-rm(list = ls())
-
-
 # Loads Packages  ----
 library(plyr)
 library(tidyverse)
