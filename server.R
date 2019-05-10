@@ -78,17 +78,20 @@ server <- function(input, output, session)
   })
   
   
-  dbRender <- reactive({
-    db <- read.csv("db.csv")
+  dbRender <- function()
+  {
+    db <- read.table("db.csv",
+                     header=TRUE,
+                     sep=",",
+                     colClasses="character")
     db <- db[-1] %>% setDT()
     db
-  })
+  }
   
   # Renders database
-  output$db <- renderDT({
+  output$database <- renderDT({
     datatable(
-      dbRender(),
-      extensions="Responsive"
+      dbRender()
     )
   })
   
@@ -107,14 +110,14 @@ server <- function(input, output, session)
   
   
   
-  # VOLCANO SERVER  ----
-  # 
-  # 
-  # 
-  # 
-  # 
-  # 
-  # Determines plex size of experiment ---- 
+  # # VOLCANO SERVER  ----
+  # #
+  # #
+  # #
+  # #
+  # #
+  # #
+  # Determines plex size of experiment ----
   plex <- reactive({
     as.numeric(input$num_groups) * as.numeric(input$num_replicates)
   })
@@ -122,24 +125,18 @@ server <- function(input, output, session)
   
   # Gets sample names and labels user provided  ----
   getSamples <- reactive({
-    samples <- input$tmt$datapath %>% read_excel()
-    as.data.frame(samples)
+    as.data.frame(read_excel(input$tmt$datapath))
   })
   
   
-  # Replaces missing values in dataset with 0  ----
-  data_rm0 <- reactive({
-    input$volc_data$datapath %>%
-      read_excel() %>%
+  # Replaces missing values with 0 & selects protein abundances & description for viewing  ----
+  tidyData <- reactive({
+    # Replaces missing values in dataset with 0  ----
+    dat <- input$volc_data$datapath %>% read_excel() %>% 
       mutate_all(funs(replace(.,is.na(.),0)))
-  })
-  
-  
-  # Renames column names with corresponding sample name  ----
-  data_rename <- reactive({
     samples <- getSamples()
-    dat <- data_rm0()
     
+    # Renames column names in dataset with corresponding sample name  ----
     for (i in 1:ncol(dat))
     {
       for (j in 1:nrow(samples))
@@ -150,14 +147,8 @@ server <- function(input, output, session)
         }
       }
     }
-    dat
-  })
-  
-  
-  # Removes all columns except protein abundances  ----
-  data_selected <- reactive({
-    samples <- getSamples()
-    dat <- data_rename()
+    
+    # Removes all columns in dataset except protein abundances  ----
     selected <- as.data.frame(matrix(0,nrow(dat),plex()))
     
     for (i in 1:nrow(samples))
@@ -165,13 +156,15 @@ server <- function(input, output, session)
       names(selected)[i] <- samples[i,1]
       selected[i] <- dat[samples[i,1]]
     }
-    selected
+    cbind(dat["Description"],selected)
   })
   
   
   # Normalizes data about median  ----
   data_normalized <- reactive({
-    dat <- data_selected()
+    # 1st column in dataset is protein description, thus the -1
+    dat <- tidyData()[-1]
+   
     sums <- colSums(dat)
     median <- median(sums)
     percent_median <- median / sums
@@ -193,7 +186,7 @@ server <- function(input, output, session)
   
   
   # Calculates negative log10 of p-values  ----
-  data_log_pval <- reactive({ 
+  data_log_pval <- reactive({
     -log10(data_pval())
   })
   
@@ -213,7 +206,7 @@ server <- function(input, output, session)
   # Creates volcano plot  ----
   volcano <- reactive({
     dat <- cbind(data_log_fc(),data_log_pval()) %>% removeNan()
-    og_data <- data_rm0()
+    og_data <- tidyData()
     pval <- -log10(input$pval_threshold)
     fc <- log2(input$fc_threshold)
     
@@ -229,11 +222,11 @@ server <- function(input, output, session)
     createPlot <- function(index)
     {
       # plot_ly: Plots fold-change on x-axis and pval on y-axis
-      # text: Specifies that protein description appear when a 
+      # text: Specifies that protein description appear when a
       #       datapoint is hovered over
       # name: Specifies the name that appears on the legend for
       #       that specific dataset
-      plot_ly(x=dat[[index+1]], 
+      plot_ly(x=dat[[index+1]],
               y=dat[[index+num_comparisons+1]],
               text=dat[[1]],
               name=substr(names(dat)[index+1],12,nchar(names(dat)[index+1]))) %>%
@@ -266,12 +259,12 @@ server <- function(input, output, session)
                   text="Fold-change Threshold") %>%
         
         # Specifies x and y axis titles
-        layout(xaxis=list(title="Log2 Fold-change"),
+        layout(xaxis=list(title="Log2 fold-change"),
                yaxis=list(title="-Log10 p-val"))
     }
     
     # Creates a list of plots for group comparisons
-    plotList <- function(nplot) 
+    plotList <- function(nplot)
     {
       lapply(seq_len(nplot), createPlot)
     }
@@ -297,16 +290,16 @@ server <- function(input, output, session)
   # Produces prompt to select which comparison group to view includes "all" option  ----
   comparison_group_prompt <- reactive({
     names <- cbind(getComparisonNames(),"all")
-    selectInput("compare_group","Comparison Group:",
-                choices=names)
+    selectizeInput("compare_group","Comparison Group:",
+                   choices=names,selected=names[1],multiple=FALSE)
   })
   
   
   # Produces prompt to select which comparison group to view w/o "all" option ----
   sig_comparison_prompt <- reactive({
     names <- getComparisonNames()
-    selectInput("sig_compare_group","Comparison Group:",
-                choices=names)
+    selectizeInput("sig_compare_group","Comparison Group:",
+                   choices=names,selected=names[1],multiple=FALSE)
   })
   
   
@@ -317,7 +310,7 @@ server <- function(input, output, session)
     comp_grp <- input$compare_group
     
     # Data set containing protein description
-    raw_data <- data_rm0()
+    raw_data <- tidyData()
     
     fc_data <- data_fc()
     pval_data <- data_pval()
@@ -351,7 +344,7 @@ server <- function(input, output, session)
     comp_grp <- input$sig_compare_group
     
     # Data set containing protein description
-    raw_data <- data_rm0()
+    raw_data <- tidyData()
     
     fc_data <- data_fc() %>% removeNan() %>% roundValues(.,4)
     pval_data <- data_pval() %>% removeNan() %>% roundValues(.,4)
@@ -389,7 +382,7 @@ server <- function(input, output, session)
   
   # Misc.: Determines percent median of all samples  ----
   percent_median <- reactive({
-    dat <- data_selected()
+    dat <- tidyData()[-1]
     names <- colnames(dat)
     sums <- colSums(dat)
     median <- median(sums)
@@ -412,20 +405,22 @@ server <- function(input, output, session)
   
   
   # Renders dataset with only protein abundances
-  output$data_tidy <- renderDT({
+  output$tidy_data <- renderDT({
     coverUp(
       datatable(
-        data_selected(),
-        rownames=FALSE,
-        options=list(columnDefs = list(list(className="dt-ceter")))
+        tidyData(),
+        rownames=FALSE
       )
     )
   })
   
   # Renders dataset of protein abundances after being normalized about median
-  output$data_normalized <- renderDataTable({
+  output$data_normalized <- renderDT({
     coverUp(
-      roundValues(data_normalized(),3)
+      datatable(
+        roundValues(data_normalized(),3),
+        rownames=FALSE
+      )
     )
   })
   
@@ -437,9 +432,12 @@ server <- function(input, output, session)
   })
   
   # Renders table of fold-changes & pvals for selected comparison group
-  output$comparison_group_data <- renderDataTable({
+  output$comparison_group_data <- renderDT({
     coverUp(
-      comparison_group_data()
+      datatable(
+        comparison_group_data(),
+        rownames=FALSE
+      )
     )
   })
   
@@ -477,9 +475,12 @@ server <- function(input, output, session)
   })
   
   # Renders table of significant proteins
-  output$sig_protein_data <- renderDataTable({
+  output$sig_protein_data <- renderDT({
     coverUp(
-      sig_protein_data()
+      datatable(
+        sig_protein_data(),
+        rownames=FALSE
+      )
     )
   })
   
@@ -502,21 +503,68 @@ server <- function(input, output, session)
     }
   )
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
   # Renders table of pecent medians of all samples
-  output$percent_median <- renderDataTable({
+  output$percent_median <- renderDT({
     coverUp(
-      percent_median()
+      datatable(
+        percent_median(),
+        rownames=FALSE
+      )
     )
+  })
+  
+  # Renders prompt to select comparison group for p-value histogram
+  output$sig_comparison_group2 <- renderUI({
+    coverUp(
+      comparison_prompt2()
+    )
+  })
+  
+  
+  # Renders histogram of p-values
+  output$pvalHisto <- renderPlot({
+    coverUp(
+      createPvalHisto()
+    )
+  })
+  
+  
+  # # Renders button to download p-value histogram  ----
+  output$pvalHisto_button <- renderUI({
+    coverUp(
+      downloadButton("pvalHisto_dwnld", label=tags$b("Download"))
+    )
+  })
+  
+  # Produces prompt to select which comparison group to view w/o "all" option ----
+  comparison_prompt2 <- reactive({
+    names <- getComparisonNames()
+    selectizeInput("compare_group2","Comparison Group:",
+                   choices=names,selected=names[1],multiple=FALSE)
+  })
+  
+  
+  # Produces histogram of p-value of selected comparison group  ----
+  createPvalHisto <- reactive({
+    
+    # Selected comparison group
+    comp_grp <- input$compare_group2
+    
+    # Data set containing pvals for all comparison gorups
+    pval_data <- data_pval()
+    
+    # Determines which comparison group user selected and selects corresponding pval
+    for (i in 1:ncol(pval_data))
+    {
+      if (grepl(comp_grp, names(pval_data)[i], ignore.case=TRUE))
+      {
+        index <- i
+      }
+    }
+    pval_data <- pval_data[index] %>% unlist() %>% as.numeric()
+    hist(pval_data,
+         xlab="p-value",
+         main=paste(input$compare_group2," p-value Histogram"))
   })
   
 }

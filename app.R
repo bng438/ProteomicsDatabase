@@ -6,6 +6,8 @@
 
 # Loads Packages  ----
 library(plyr)
+library(broom)
+library(colorspace)
 library(tidyverse)
 library(plotly)
 library(readxl)
@@ -19,6 +21,9 @@ library(data.table)
 library(shinydashboard)
 library(shinyjs)
 library(shinyWidgets)
+library(xfun)
+library(shinycssloaders)
+library(rsconnect)
 source("server.R")
 source("ui.R")
 source("global.R")

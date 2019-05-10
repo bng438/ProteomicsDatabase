@@ -32,6 +32,17 @@ toAllGroups <- function(dat, num_repl, func)
 {
   result <- as.data.frame(matrix(0,nrow(dat)))
   
+  # Determines column heading depending on function specified
+  if (strcmp(func, "pVal"))
+  {
+    func_heading <- "Pval"
+  }
+  else 
+  {
+    func_heading <- "Fold-change"
+  }
+  
+  
   for (i in seq(1, (ncol(dat) - (2 * num_repl - 1)), by=num_repl))
   {
     for (j in seq((num_repl + i), (ncol(dat) - num_repl + 1), by=num_repl))
@@ -43,16 +54,6 @@ toAllGroups <- function(dat, num_repl, func)
               grp1=c(i : (i + num_repl - 1)),
               grp2=c(j : (j + num_repl - 1))) %>%
         as_tibble() %>% select("V1")
-      
-      # Determines column heading depending on function specified
-      if (strcmp(func, "pVal"))
-      {
-        func_heading <- "Pval"
-      }
-      else 
-      {
-        func_heading <- "Fold-change"
-      }
       
       # Renames column heading
       names(result)[length(result)] <-

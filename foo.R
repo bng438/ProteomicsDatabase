@@ -1,9 +1,12 @@
 # Installs Packages  ----
-packages <- c("plyr","tidyverse","plotly", 
-              "gridExtra","ggseqlogo","DT",
-              "RDocumentation","runjags","pracma",
-              "shiny","data.table","shinydashboard",
-              "shinyjs", "shinyWidgets", "rsconnect")
+packages <- c("plyr","broom","colorspace","tidyverse",
+              "plotly", "gridExtra",
+              "ggseqlogo", "DT", "RDocumentation",
+              "runjags","pracma", "shiny",
+              "data.table","shinydashboard",
+              "shinyjs", "shinyWidgets", "rsconnect",
+              "BiocManager", "installr", "shinycssloaders",
+              "reactlog")
 for (i in seq_along(packages))
 {
   if(!requireNamespace(packages[i]))
@@ -12,13 +15,14 @@ for (i in seq_along(packages))
   }
 }
 
-
 # Clears Global Workspace  ----
 rm(list = ls())
 
 
 # Loads Packages  ----
 library(plyr)
+library(broom)
+library(colorspace)
 library(tidyverse)
 library(plotly)
 library(readxl)
@@ -33,7 +37,13 @@ library(shinydashboard)
 library(shinyjs)
 library(shinyWidgets)
 library(rsconnect)
+library(shinycssloaders)
+library(reactlog)
 
+options(shiny.reactlog = TRUE)
+library(installr)
+updateR()
+BiocManager::install()
 
 db <- data.table("sub_date","dataFile","date", "scientist", "protein", "cell", "description","drug","eln")
 foo <- data.table("melon", "melon","melon","melon","melon","melon","jp","foo", "melon")

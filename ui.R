@@ -34,13 +34,6 @@ ui <- dashboardPage(
       tabItem(
         tabName="home",
         
-        # Row containing boxes of values  ----
-        fluidRow(
-          valueBox(0,"Searches",icon=icon("coffee")),
-          valueBox(1,"Widgets", icon=icon("laptop-code"), color="purple"),
-          valueBox(0,"Files archived",icon=icon("archive"), color="yellow")
-        ),
-        
         # Row containing form to upload file  ----
         fluidRow(
           box(title=HTML("<i class='fas fa-clipboard-list'> Upload</i>"),
@@ -96,7 +89,7 @@ ui <- dashboardPage(
                                                        onInitialize = I('function() { this.setValue(""); }')))),
                   
                   # Input to specify which ELN used for experiment  ----
-                  column(4, textInput("eln", label="ELN"))
+                  column(4,textInput("eln", label="ELN"))
                 ),
                 
                 # Input for brief description of experiment & any comments  ----
@@ -114,7 +107,7 @@ ui <- dashboardPage(
         # Row containing search  ----
         fluidRow(
           box(title=HTML("<i class='fas fa-search'> Search</i>"),
-              status="info",
+              status="primary",
               solidHeader=TRUE,
               collapsible=TRUE,
               width="12",
@@ -122,8 +115,38 @@ ui <- dashboardPage(
               # Contains all ui inputs of search ----
               div(
                 id="search",
-                DTOutput("db")
+                
+                # Input to specify search  ----
+                fluidRow(
+                  column(5,selectizeInput("search_input",
+                                          label="Search",
+                                          choices=list(
+                                            "Protein"=proteins,
+                                            "Cell Line"=cells,
+                                            "Scientist"=scientists,
+                                            "Drug"=drugs),
+                                          multiple=TRUE,
+                                          options=list(create=TRUE,
+                                                       placeholder="",
+                                                       onInitialize = I('function() { this.setValue(""); }'))))),
+                
+                # Table displaying search results  ----
+                fluidRow(
+                  column(12, DTOutput("search_output")))
               )
+          )
+        ),
+        
+        # row containing database  ----
+        fluidRow(
+          box(title=HTML("<i class='fas fa-database'> Database</i>"),
+              status="warning",
+              solidHeader=TRUE,
+              collapsible=TRUE,
+              width="12",
+              
+              # Contains table representing database  ----
+              DTOutput("database")
           )
         )
       ),
@@ -169,37 +192,44 @@ ui <- dashboardPage(
                         
                         # Displays raw protein abundance values
                         tabPanel("Raw Data",
-                                 DTOutput("data_tidy")
-                                 ),
+                                 shinycssloaders::withSpinner(DTOutput("tidy_data"))
+                        ),
                         
                         # Displays normalized protein abundance values
                         tabPanel("Normalized",
-                                 dataTableOutput("data_normalized")
-                                 ),
+                                 shinycssloaders::withSpinner(DTOutput("data_normalized"))
+                        ),
                         
                         # Displays fold-change and pvals for selected comparison group
                         tabPanel("Fold-change & Pval",
                                  uiOutput("comparison_group"),
-                                 dataTableOutput("comparison_group_data"),
+                                 shinycssloaders::withSpinner(DTOutput("comparison_group_data")),
                                  uiOutput("fc_pval_button")
-                                 ),
+                        ),
                         
                         # Displays volcano plot for all combination of groups
                         tabPanel("Volcano",
-                                 plotlyOutput("volcano")
-                                 ),
+                                 shinycssloaders::withSpinner(plotlyOutput("volcano"))
+                        ),
                         
                         # Displays significant proteins
                         tabPanel("Significant Proteins",
                                  uiOutput("sig_comparison_group"),
-                                 dataTableOutput("sig_protein_data"),
+                                 shinycssloaders::withSpinner(DTOutput("sig_protein_data")),
                                  uiOutput("sig_prot_button")
-                                 ),
+                        ),
                         
                         # Displays miscellaneous statistical values
                         tabPanel("Misc",
-                                 dataTableOutput("percent_median")
-                                 )
+                                 shinycssloaders::withSpinner(DTOutput("percent_median"))
+                        ),
+                        
+                        # Displays histogram of p-values
+                        tabPanel("Pval Histogram",
+                                 uiOutput("sig_comparison_group2"),
+                                 shinycssloaders::withSpinner(plotOutput("pvalHisto")),
+                                 uiOutput("pvalHisto_button")
+                        )
             )
           )
         )
