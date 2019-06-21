@@ -9,22 +9,20 @@ source("volcano_helper.R")
 # Defines server logic  ----
 server <- function(input, output, session) 
 {
-  # # Determines time in readable format
-  # humanTime <- function() 
-  # {
-  #   return(format(Sys.time(), "%Y%m%d-%H%M%OS"))
-  # }
-  
-  
-  # Aggregates all form inputs and adds them to the database  ----
-  submitForm <- function()
+  # Reads database file for use  ----
+  renderDB <- function()
   {
     db <- read.table("db.csv",
                      header=TRUE,
                      sep=",",
-                     colClasses="character"
-    )
+                     colClasses="character")
     db <- db[-1] %>% setDT()
+  }
+  
+  # Aggregates all form inputs and adds them to the database  ----
+  submitForm <- function()
+  {
+    db <- renderDB()
     
     # Aggregates all inputs  ----
     # First column records submission time and date, thus i+1
@@ -43,7 +41,7 @@ server <- function(input, output, session)
         entry[,i+1] <- input[[fields[i]]]
     }
     
-    # Creates new column, containing all new entries, with current time as name  ----
+    # Creates new row, containing all new entries, with current time as row name  ----
     db <- bind_rows(db,entry)
     
     # Saves updated database  ----
@@ -78,23 +76,43 @@ server <- function(input, output, session)
   })
   
   
-  dbRender <- function()
-  {
-    db <- read.table("db.csv",
-                     header=TRUE,
-                     sep=",",
-                     colClasses="character")
-    db <- db[-1] %>% setDT()
-    db
-  }
-  
-  # Renders database
+  # Renders database  ----
   output$database <- renderDT({
     datatable(
-      dbRender()
+      renderDB()
     )
   })
   
+  # Searches database based on user search inputs  ----
+  searchDB <- reactive({
+    
+    db <- renderDB()
+    params <- input$search_input
+    
+    index <- list()
+    for (i in 1:length(params))
+    {
+      for (j in 1:ncol(db))
+      {
+        if (str_detect(db[[j]],params[[i]]))
+        {
+          db <- filter(db,str_detect(db[[j]],params[[i]]))
+        }
+      }
+    }
+    db
+  })
+  
+  
+  output$search_output <- renderDT({
+    
+    if (is.null(input$search_input))
+      return(NULL)
+    else
+      return(datatable(
+        searchDB()
+      ))
+  })
   
   
   
@@ -164,7 +182,7 @@ server <- function(input, output, session)
   data_normalized <- reactive({
     # 1st column in dataset is protein description, thus the -1
     dat <- tidyData()[-1]
-   
+    
     sums <- colSums(dat)
     median <- median(sums)
     percent_median <- median / sums
