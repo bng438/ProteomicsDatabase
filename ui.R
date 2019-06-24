@@ -174,11 +174,14 @@ ui <- dashboardPage(
             # Stores number of replicates per group
             numericInput("num_replicates", h5("Replicates per Group"),value=3,min=1,max=9),
             
+            # Stores PSM cutoff point
+            numericInput("psm_cutoff", h5("PSM Cutoff"), value=1,min=1),
+            
             # Stores p-val threshold
             numericInput("pval_threshold", h5("Pval Threshold"), value=.05, min=0),
             
             # Stores fold-change threshold
-            numericInput("fc_threshold", h5("Fold-change Threshold"), value=1.414, min=0),
+            numericInput("fc_threshold", h5("Fold-change Threshold"), value=1.5, min=0),
             
             # Text box detailing limitations to script
             helpText("Data file should not contain abundance ratios")

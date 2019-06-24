@@ -135,8 +135,8 @@ server <- function(input, output, session)
   # #
   # #
   # #
-  # Determines plex size of experiment ----
-  plex <- reactive({
+  # Determines getPlex size of experiment ----
+  getPlex <- reactive({
     as.numeric(input$num_groups) * as.numeric(input$num_replicates)
   })
   
@@ -147,12 +147,33 @@ server <- function(input, output, session)
   })
   
   
-  # Replaces missing values with 0 & selects protein abundances & description for viewing  ----
+  # General housekeeping tasks to prepare dataset for analysis  ----
+  #   - Replaces missing values with 0
+  #   - Removes proteins with less PSMs than specified by user
+  #   - Removes all kerotin proteins
+  #   - Labels abundance column with corresponding sample name
+  #   - Displays only protein abundances, gene name, & PSMs
   tidyData <- reactive({
     # Replaces missing values in dataset with 0  ----
     dat <- input$volc_data$datapath %>% read_excel() %>% 
       mutate_all(funs(replace(.,is.na(.),0)))
     samples <- getSamples()
+    
+    # Removes all proteins with less or equal to PSMs than specified by user   ----
+    names(dat)[colnames(dat) == "# PSMs"] <- "PSMs"
+    dat <- subset(dat, PSMs > input$psm_cutoff)
+    
+    # Removes all kerotin proteins found in dataset  ----
+    description <- dat["Description"]
+    keratin <- 0
+    for (i in 1:nrow(dat))
+    {
+      if(grepl("keratin", description[i,1],ignore.case=TRUE))
+      {
+        keratin <- c(i,keratin)
+      }
+    }
+    dat <- dat[-keratin,]
     
     # Renames column names in dataset with corresponding sample name  ----
     for (i in 1:ncol(dat))
@@ -166,40 +187,55 @@ server <- function(input, output, session)
       }
     }
     
-    # Removes all columns in dataset except protein abundances  ----
-    selected <- as.data.frame(matrix(0,nrow(dat),plex()))
-    
+    # Selects protein abundances from dataset   ----
+    selected <- as.data.frame(matrix(0,nrow(dat),getPlex()))
     for (i in 1:nrow(samples))
     {
       names(selected)[i] <- samples[i,1]
       selected[i] <- dat[samples[i,1]]
     }
-    cbind(dat["Description"],selected)
+    
+    # Extracts gene name from protein description  ----
+    description <- dat["Description"]
+    geneName <- as.data.frame(matrix(0,nrow(description),1))
+    names(geneName)[1] <- "Gene Name"
+    
+    for (i in 1:nrow(geneName))
+    {
+      geneName[i,1] <- getGeneName(description[i,1])
+    }
+    
+    # Creates datatable with protein gene name & PSMs alongside abundances ----
+    cbind(geneName, dat["PSMs"], selected)
   })
   
   
   # Normalizes data about median  ----
   data_normalized <- reactive({
-    # 1st column in dataset is protein description, thus the -1
-    dat <- tidyData()[-1]
+    # 1st column in dataset is gene name & 2nd column
+    # is PSMs, thus the -1 and -2
+    dat <- tidyData()
+    abundances <- dat[-c(1,2)]
     
-    sums <- colSums(dat)
+    sums <- colSums(abundances)
     median <- median(sums)
     percent_median <- median / sums
-    data_normalized <- as.data.frame(matrix(0,nrow(dat),plex()))
+    data_normalized <- as.data.frame(matrix(0,nrow(abundances),getPlex()))
     
-    for(i in 1:ncol(dat))
+    for(i in 1:ncol(abundances))
     {
-      data_normalized[i] <- dat[,i] * percent_median[i]
-      names(data_normalized)[i] <- names(dat)[i]
+      data_normalized[i] <- abundances[,i] * percent_median[i]
+      names(data_normalized)[i] <- names(abundances)[i]
     }
-    data_normalized
+    data_normalized <- roundValues(data_normalized,3)
+    cbind(dat["Gene Name"], dat["PSMs"], data_normalized)
   })
   
   
   # Performs t-test among all groups  ----
   data_pval <- reactive({
-    toAllGroups(data_normalized(), input$num_replicates, "pVal")
+    toAllGroups(data_normalized()[-c(1,2)], input$num_replicates, "pVal") %>%
+      removeNan() %>% roundValues(.,5)
   })
   
   
@@ -211,7 +247,8 @@ server <- function(input, output, session)
   
   # Calculates fold-change among all groups  ----
   data_fc <- reactive({
-    toAllGroups(data_normalized(), input$num_replicates, "foldChange")
+    toAllGroups(data_normalized()[-c(1,2)], input$num_replicates, "foldChange") %>%
+      removeNan() %>% roundValues(.,5)
   })
   
   
@@ -223,7 +260,7 @@ server <- function(input, output, session)
   
   # Creates volcano plot  ----
   volcano <- reactive({
-    dat <- cbind(data_log_fc(),data_log_pval()) %>% removeNan()
+    dat <- cbind(data_log_fc(),data_log_pval())
     og_data <- tidyData()
     pval <- -log10(input$pval_threshold)
     fc <- log2(input$fc_threshold)
@@ -231,9 +268,9 @@ server <- function(input, output, session)
     # Determines number of group comparisons
     num_comparisons <- ncol(dat) / 2
     
-    # Attaches protein descriptions to the merged dataset
-    # which contains fold-change and pval
-    dat <- cbind(og_data["Description"], dat)
+    # Attaches protein descriptions to the merged dataset that
+    # contains log transformed fold-change and pval
+    dat <- cbind(og_data["Gene Name"], dat)
     
     
     # Creates individual volcano plot  ----
@@ -305,7 +342,8 @@ server <- function(input, output, session)
   })
   
   
-  # Produces prompt to select which comparison group to view includes "all" option  ----
+  # Produces prompt to select pval & fold-change comparison group to view  ----
+  #   -- Includes "all" option --
   comparison_group_prompt <- reactive({
     names <- cbind(getComparisonNames(),"all")
     selectizeInput("compare_group","Comparison Group:",
@@ -313,7 +351,8 @@ server <- function(input, output, session)
   })
   
   
-  # Produces prompt to select which comparison group to view w/o "all" option ----
+  # Produces prompt to select significant protein comparison group to view  ----
+  #   -- Doesn't include "all" option --
   sig_comparison_prompt <- reactive({
     names <- getComparisonNames()
     selectizeInput("sig_compare_group","Comparison Group:",
@@ -327,17 +366,15 @@ server <- function(input, output, session)
     # Selected comparison group
     comp_grp <- input$compare_group
     
-    # Data set containing protein description
-    raw_data <- tidyData()
-    
+    dat <- tidyData()
     fc_data <- data_fc()
     pval_data <- data_pval()
     
     if (input$compare_group == "all")
     {
       # Merge function puts corresponding pvals next to corresponding fold-changes
-      merged <- merge(fc_data,pval_data) %>% removeNan() %>% roundValues(.,4)
-      comp_group_data <- cbind(raw_data["Description"],merged)
+      merged <- merge(fc_data,pval_data) 
+      comp_group_data <- cbind(dat["Gene Name"], dat["PSMs"], merged)
     }
     else
     {
@@ -346,8 +383,8 @@ server <- function(input, output, session)
       {
         if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
         {
-          merged <- cbind(fc_data[i],pval_data[i]) %>% removeNan() %>% roundValues(.,4)
-          comp_group_data <- cbind(raw_data["Description"],merged)
+          merged <- cbind(fc_data[i],pval_data[i]) 
+          comp_group_data <- cbind(dat["Gene Name"], dat["PSMs"],merged)
         }
       }
     }
@@ -361,21 +398,21 @@ server <- function(input, output, session)
     # Selected comparison group
     comp_grp <- input$sig_compare_group
     
-    # Data set containing protein description
-    raw_data <- tidyData()
-    
-    fc_data <- data_fc() %>% removeNan() %>% roundValues(.,4)
-    pval_data <- data_pval() %>% removeNan() %>% roundValues(.,4)
+    dat <- tidyData()
+    fc_data <- data_fc()
+    pval_data <- data_pval()
     
     # Determines which comparison group user selected
     for (i in 1:ncol(fc_data))
     {
       if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
       {
-        sig_protein <- getSigProt(cbind(raw_data["Description"],fc_data[i],pval_data[i]))
+        sig_protein <- getSigProt(cbind(dat["Gene Name"], 
+                                        dat["PSMs"], 
+                                        fc_data[i],
+                                        pval_data[i]))
       }
     }
-    # write.csv(sig_protein,file=paste(comp_grp,".csv"))
     sig_protein
   })
   
@@ -385,11 +422,15 @@ server <- function(input, output, session)
   {
     fc <- input$fc_threshold
     pval <- input$pval_threshold
+    
+    # Vector keeping track of rows to include
     keep <- 0
     
+    # Gene name is at position 1 & PSMs is at position 2
+    # Fold-change is at position 3 & Pval is at position 4
     for (i in 1:nrow(dat))
     {
-      if (dat[i,3] < pval & (dat[i,2] > fc | dat[i,2] < 1/fc) & (dat[i,2] != 0))
+      if (dat[i,4] < pval & (dat[i,3] > fc | dat[i,3] < 1/fc) & (dat[i,3] != 0))
       {
         keep <- c(keep,i)
       }
@@ -400,7 +441,7 @@ server <- function(input, output, session)
   
   # Misc.: Determines percent median of all samples  ----
   percent_median <- reactive({
-    dat <- tidyData()[-1]
+    dat <- tidyData()[-c(1,2)]
     names <- colnames(dat)
     sums <- colSums(dat)
     median <- median(sums)
@@ -436,7 +477,7 @@ server <- function(input, output, session)
   output$data_normalized <- renderDT({
     coverUp(
       datatable(
-        roundValues(data_normalized(),3),
+        data_normalized(),
         rownames=FALSE
       )
     )
@@ -547,7 +588,7 @@ server <- function(input, output, session)
   })
   
   
-  # # Renders button to download p-value histogram  ----
+  # Renders button to download p-value histogram  ----
   output$pvalHisto_button <- renderUI({
     coverUp(
       downloadButton("pvalHisto_dwnld", label=tags$b("Download"))

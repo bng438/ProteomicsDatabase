@@ -101,3 +101,19 @@ roundValues <- function(dat,x)
 {
   mutate_all(dat, round, x)
 }
+
+
+# Extracts gene name given a protein description  ----
+getGeneName <- function(description)
+{
+  # Removes spaces within description
+  removeSpace <- str_replace_all(description, fixed(" "), "")
+  
+  # Determines start position of gene name
+  geneStart <- str_locate(removeSpace, "GN=")[2]
+  
+  # Determines end position of gene name
+  geneEnd <- str_locate(removeSpace, "PE=")[1]
+  
+  return(str_sub(removeSpace, start=geneStart+1, end=geneEnd-1))
+}
