@@ -152,7 +152,7 @@ server <- function(input, output, session)
   #   - Removes proteins with less PSMs than specified by user
   #   - Removes all kerotin proteins
   #   - Labels abundance column with corresponding sample name
-  #   - Displays only protein abundances, gene name, & PSMs
+  #   - Displays only PSMs, # Unique peptides, Gene name, & Protein abundances
   tidyData <- reactive({
     # Replaces missing values in dataset with 0  ----
     dat <- input$volc_data$datapath %>% read_excel() %>% 
@@ -160,8 +160,9 @@ server <- function(input, output, session)
     samples <- getSamples()
     
     # Removes all proteins with less or equal to PSMs than specified by user   ----
+    names(dat)[colnames(dat) == "# Unique Peptides"] <- "UniquePeptides"
     names(dat)[colnames(dat) == "# PSMs"] <- "PSMs"
-    dat <- subset(dat, PSMs > input$psm_cutoff)
+    dat <- subset(dat, UniquePeptides > input$uniq_peptide_cutoff)
     
     # Removes all kerotin proteins found in dataset  ----
     description <- dat["Description"]
@@ -205,17 +206,17 @@ server <- function(input, output, session)
       geneName[i,1] <- getGeneName(description[i,1])
     }
     
-    # Creates datatable with protein gene name & PSMs alongside abundances ----
-    cbind(geneName, dat["PSMs"], selected)
+    # Creates datatable with gene name, PSMs, & # unique peptides alongside abundances ----
+    cbind(geneName, dat["PSMs"], dat["UniquePeptides"], selected)
   })
   
   
   # Normalizes data about median  ----
   data_normalized <- reactive({
-    # 1st column in dataset is gene name & 2nd column
-    # is PSMs, thus the -1 and -2
+    # Gene name located in column 1, PSMs located in column 2,
+    # # unique peptides located in column 3, thus -1,-2,-3
     dat <- tidyData()
-    abundances <- dat[-c(1,2)]
+    abundances <- dat[-c(1,2,3)]
     
     sums <- colSums(abundances)
     median <- median(sums)
@@ -228,13 +229,13 @@ server <- function(input, output, session)
       names(data_normalized)[i] <- names(abundances)[i]
     }
     data_normalized <- roundValues(data_normalized,3)
-    cbind(dat["Gene Name"], dat["PSMs"], data_normalized)
+    cbind(dat["Gene Name"], dat["PSMs"], dat["UniquePeptides"], data_normalized)
   })
   
   
   # Performs t-test among all groups  ----
   data_pval <- reactive({
-    toAllGroups(data_normalized()[-c(1,2)], input$num_replicates, "pVal") %>%
+    toAllGroups(data_normalized()[-c(1,2,3)], input$num_replicates, "pVal") %>%
       removeNan() %>% roundValues(.,5)
   })
   
@@ -247,7 +248,7 @@ server <- function(input, output, session)
   
   # Calculates fold-change among all groups  ----
   data_fc <- reactive({
-    toAllGroups(data_normalized()[-c(1,2)], input$num_replicates, "foldChange") %>%
+    toAllGroups(data_normalized()[-c(1,2,3)], input$num_replicates, "foldChange") %>%
       removeNan() %>% roundValues(.,5)
   })
   
@@ -374,7 +375,7 @@ server <- function(input, output, session)
     {
       # Merge function puts corresponding pvals next to corresponding fold-changes
       merged <- merge(fc_data,pval_data) 
-      comp_group_data <- cbind(dat["Gene Name"], dat["PSMs"], merged)
+      comp_group_data <- cbind(dat["Gene Name"], dat["PSMs"], dat["UniquePeptides"], merged)
     }
     else
     {
@@ -384,7 +385,7 @@ server <- function(input, output, session)
         if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
         {
           merged <- cbind(fc_data[i],pval_data[i]) 
-          comp_group_data <- cbind(dat["Gene Name"], dat["PSMs"],merged)
+          comp_group_data <- cbind(dat["Gene Name"], dat["PSMs"], dat["UniquePeptides"], merged)
         }
       }
     }
@@ -408,7 +409,8 @@ server <- function(input, output, session)
       if (grepl(comp_grp, names(fc_data)[i], ignore.case=TRUE))
       {
         sig_protein <- getSigProt(cbind(dat["Gene Name"], 
-                                        dat["PSMs"], 
+                                        dat["PSMs"],
+                                        dat["UniquePeptides"],
                                         fc_data[i],
                                         pval_data[i]))
       }
@@ -426,11 +428,11 @@ server <- function(input, output, session)
     # Vector keeping track of rows to include
     keep <- 0
     
-    # Gene name is at position 1 & PSMs is at position 2
-    # Fold-change is at position 3 & Pval is at position 4
+    # Gene name is at position 1, PSMs is at position 2, Unique peptides is at position 3,
+    # Fold-change is at position 4 & Pval is at position 5
     for (i in 1:nrow(dat))
     {
-      if (dat[i,4] < pval & (dat[i,3] > fc | dat[i,3] < 1/fc) & (dat[i,3] != 0))
+      if (dat[i,5] < pval & (dat[i,4] > fc | dat[i,4] < 1/fc) & (dat[i,4] != 0))
       {
         keep <- c(keep,i)
       }
@@ -441,7 +443,7 @@ server <- function(input, output, session)
   
   # Misc.: Determines percent median of all samples  ----
   percent_median <- reactive({
-    dat <- tidyData()[-c(1,2)]
+    dat <- tidyData()[-c(1,2,3)]
     names <- colnames(dat)
     sums <- colSums(dat)
     median <- median(sums)
